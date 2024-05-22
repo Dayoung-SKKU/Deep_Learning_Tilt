@@ -8,7 +8,7 @@ import math
 
 
 #포인트 클라우드 데이터 블러오기
-os.chdir('C:/Users/user/Dropbox/02_code/deep_learning_class/Deep_Learning_Tilt/Data')   // 깃허브에 데이터를 올려서 파일경로로 불러오려고 하는데, 아직 헤매는 중입니다..
+os.chdir('C:/Users/user/Dropbox/02_code/deep_learning_class/Deep_Learning_Tilt/Data')   // 깃허브에 데이터를 올려서 파일경로로 불러오려고 하는데, 데이터의 용량제한으로 업로드가 안되는 상황입니다.
 raw = o3d.io.read_point_cloud('pcd_final_voxel_downsampled_0.025_2.pcd')      //Point Cloud Data
 print(len(raw.points))
 
