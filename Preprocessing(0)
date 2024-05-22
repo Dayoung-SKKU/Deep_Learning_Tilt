@@ -1,0 +1,84 @@
+import numpy as np
+import open3d as o3d
+import os
+import matplotlib.pyplot as plt
+from mpl_toolkits.mplot3d import Axes3D
+from tqdm import tqdm
+import math
+
+
+#포인트 클라우드 데이터 블러오기
+os.chdir('C:/Users/user/Dropbox/02_code/deep_learning_class/Deep_Learning_Tilt/Data')   // 깃허브에 데이터를 올려서 파일경로로 불러오려고 하는데, 아직 헤매는 중입니다..
+raw = o3d.io.read_point_cloud('pcd_final_voxel_downsampled_0.025_2.pcd')      //Point Cloud Data
+print(len(raw.points))
+
+# o3d.visualization.draw_geometries([raw])
+
+
+
+# 건축물 PCD 좌표축에 정렬
+outlier = raw
+
+while True:
+  plane, indices = outlier.segment_plane(distance_threshold = 0.005, ransac_n = 3, num_iterations = 30000,  probability = 1)
+
+  normal_vector = plane[0:3]
+  deg = math.degrees(math.acos(np.dot(normal_vector, [0, 0, 1]) / np.linalg.norm(normal_vector)))
+
+  if 85 <= deg <= 95:
+    break
+
+  outlier = outlier.select_by_index(indices, invert=True)
+  
+n_vector = plane[0:2]
+x_vector = [1, 0]
+
+rad = math.acos(np.dot(n_vector, x_vector) / np.linalg.norm(n_vector))
+print('rad:', rad)
+
+
+R = o3d.geometry.get_rotation_matrix_from_xyz((0, 0, rad))
+
+r_original = raw.rotate(R)
+r_original_points = np.asarray(r_original.points)
+
+
+# Get minimum x,y,z values
+min_x, min_y, min_z = r_original.get_min_bound()
+print(min_x, min_y, min_z)
+
+
+original_points = r_original_points - [min_x, min_y, min_z]
+original_colors = np.asarray(r_original.colors)
+
+original = o3d.geometry.PointCloud()
+original.points = o3d.utility.Vector3dVector(original_points)
+original.colors = o3d.utility.Vector3dVector(original_colors)
+
+min_x, min_y, min_z = original.get_min_bound()
+print("min", min_x, min_y, min_z)
+max_x, max_y, max_z = original.get_max_bound()
+print("max", max_x, max_y, max_z)
+
+# Compute AABB
+aabb = original.get_axis_aligned_bounding_box()
+aabb.color = (0, 0, 0)
+
+print('minimum values of point cloud:',np.min(original_points[:,0]),np.min(original_points[:,1]),np.min(original_points[:,2]))
+
+# o3d.visualization.draw_geometries([original, aabb])
+
+aabb_min_x, aabb_min_y, aabb_min_z = aabb.get_min_bound()
+print('minimum values of aabb:', aabb_min_x, aabb_min_y, aabb_min_z)
+
+
+건축물 크기 확인
+aabb_x_length = np.abs(aabb.max_bound[0] - aabb.min_bound[0])
+aabb_y_length = np.abs(aabb.max_bound[1] - aabb.min_bound[1])
+aabb_z_length = np.abs(aabb.max_bound[2] - aabb.min_bound[2])
+
+print('x:', aabb_x_length)
+print('y:', aabb_y_length)
+print('z:', aabb_z_length)
+
+print(aabb.min_bound[0], aabb.min_bound[1], aabb.min_bound[2])
