@@ -1,0 +1,204 @@
+1. plane extraction
+original_pcd = o3d.geometry.PointCloud()
+original_pcd.points = o3d.utility.Vector3dVector(original.points)
+original_pcd.colors = o3d.utility.Vector3dVector(original.colors)
+
+#window size -- x,y방향 길이 중 작은값의 30%
+
+shorter_length = min(aabb_x_length, aabb_y_length)
+longer_length = max(aabb_x_length, aabb_y_length)
+print('smaller_length:', shorter_length)
+print('longer_length:', longer_length)
+
+x_window = shorter_length * 0.3
+y_window = shorter_length * 0.3
+
+nx = np.ceil(aabb_x_length / x_window)
+ny = np.ceil(aabb_y_length / y_window)
+
+print('nx:', nx)
+print('ny:', ny)
+
+window_x = aabb_x_length / nx
+window_y = aabb_y_length / ny
+
+# x-axis ---hyperparameter: distance threshold= 0.005--> 0.01 : sparse하게 평면추출해서 우선 포인트를 많이 뽑은 후에, 조건 부여해서 filtering  할거임
+
+plane_models_x = []
+plane_coords_x = []
+plane_indices_x = []
+    
+w_range = aabb.min_bound[0]
+
+for i in range(int(nx)):
+    w_indices = np.where((w_range <= np.asarray(original_pcd.points)[:, 0]) & (np.asarray(original_pcd.points)[:, 0] < w_range + window_x))
+
+    segmented_pcd = original_pcd.select_by_index(w_indices[0])
+    plane_model, inliers = segmented_pcd.segment_plane(distance_threshold=0.01, ransac_n=3, num_iterations=10000)
+
+    normal_vector = plane_model[:3]
+    angle_x = math.degrees(math.acos(np.dot(normal_vector, [1, 0, 0]) / np.linalg.norm(normal_vector)))
+    angle_y = math.degrees(math.acos(np.dot(normal_vector, [0, 1, 0]) / np.linalg.norm(normal_vector)))
+    angle_z = math.degrees(math.acos(np.dot(normal_vector, [0, 0, 1]) / np.linalg.norm(normal_vector)))
+
+    if ((85 <= angle_z <= 95) and (angle_x <= angle_y)):
+        print('Plane equation: {}x + {}y + {}z + {} = 0'.format(plane_model[0], plane_model[1], plane_model[2], plane_model[3]))
+        print(len(inliers))
+
+        plane_models_x.append(plane_model)
+        plane_indices_x.append(w_indices[0][inliers])
+
+        coords = np.asarray(original_pcd.points)[w_indices[0][inliers]]
+        plane_coords_x.append(coords)
+
+        colors = np.asarray(segmented_pcd.colors)
+        plane_color = np.array([0, 0, 1])
+        colors[inliers] = plane_color
+
+        segmented_pcd.colors = o3d.utility.Vector3dVector(colors)
+
+        # o3d.visualization.draw_geometries([segmented_pcd])
+        
+    w_range += window_x
+
+
+# y-axis  ---hyperparameter: distance threshold= 0.005--> 0.01 : sparse하게 평면추출해서 우선 포인트를 많이 뽑은 후에, 조건 부여해서 filtering  할거임
+
+plane_models_y = []
+plane_coords_y = []
+plane_indices_y = []
+    
+w_range = aabb.min_bound[1]
+
+for i in range(int(ny)):
+    w_indices = np.where((w_range <= np.asarray(original_pcd.points)[:, 1]) & (np.asarray(original_pcd.points)[:, 1] < w_range + window_y))
+
+    segmented_pcd = original_pcd.select_by_index(w_indices[0])
+    plane_model, inliers = segmented_pcd.segment_plane(distance_threshold=0.01, ransac_n=3, num_iterations=10000)
+
+    normal_vector = plane_model[:3]
+    angle_x = math.degrees(math.acos(np.dot(normal_vector, [1, 0, 0]) / np.linalg.norm(normal_vector)))
+    angle_y = math.degrees(math.acos(np.dot(normal_vector, [0, 1, 0]) / np.linalg.norm(normal_vector)))
+    angle_z = math.degrees(math.acos(np.dot(normal_vector, [0, 0, 1]) / np.linalg.norm(normal_vector)))
+
+    if ((85 <= angle_z <= 95) and (angle_y <= angle_x)):
+        print('Plane equation: {}x + {}y +{}z + {} = 0'.format(plane_model[0], plane_model[1], plane_model[2], plane_model[3]))
+        print(len(inliers))
+
+        plane_models_y.append(plane_model)
+        plane_indices_y.append(w_indices[0][inliers])
+
+        coords = np.asarray(original_pcd.points)[w_indices[0][inliers]]
+        plane_coords_y.append(coords)
+
+        colors = np.asarray(segmented_pcd.colors)
+        plane_color = np.array([0, 0, 1])
+        colors[inliers] = plane_color
+
+        segmented_pcd.colors = o3d.utility.Vector3dVector(colors)
+
+        # o3d.visualization.draw_geometries([segmented_pcd])
+        
+    w_range += window_y
+
+plane_models_x_dic = {}
+plane_models_y_dic = {}
+
+for i in range(len(plane_models_x)):
+    plane_models_x_dic[i] = plane_models_x[i]
+
+for j in range(len(plane_models_y)):
+    plane_models_y_dic[j] = plane_models_y[j]
+
+
+print(len(plane_models_x_dic), plane_models_x_dic)
+print(len(plane_models_y_dic), plane_models_y_dic)
+
+#find orthogonal planes and those intersection point----- 20230725방법(*update: x, y좌표 모두 비교해야함.(230420기존방법이 나을 수도)
+orthogonal = []
+intersections = []
+
+r = 3.0
+for i in range(len(plane_models_x)):
+    for j in range(len(plane_models_y)):
+        y_cond = (min(plane_coords_x[i][:,1]) - r < np.mean(plane_coords_y[j][:,1])) and (np.mean(plane_coords_y[j][:,1]) < max(plane_coords_x[i][:,1])+ r) 
+        x_cond = (abs(min(plane_coords_y[j][:,0]) -  np.mean(plane_coords_x[i][:,0])) < r)  or (abs(np.mean(plane_coords_x[i][:,0]) - max(plane_coords_y[j][:,0])) < r)
+        # print(i, j, '|', min(plane_coords_x[i][:,1]), np.mean(plane_coords_y[j][:,1]), max(plane_coords_x[i][:,1]))
+        # print(i, j, x_cond,'|', min(plane_coords_y[j][:,0]), np.mean(plane_coords_x[i][:,0]), max(plane_coords_y[j][:,0]))
+        # print(y_cond, x_cond) 
+    
+        if (y_cond and x_cond):
+            orthogonal.append((i,j))
+
+            intersection = (np.mean(plane_coords_x[i][:,0]),np.mean(plane_coords_y[j][:,1]))
+            intersections.append(intersection)
+
+print(orthogonal)
+print('total # of edges:', len(orthogonal))
+print(intersections)
+
+intersections_dics = {}
+for i in range(len(intersections)):
+    intersections_dics[i] = intersections[i]
+
+print(len(intersections_dics), intersections_dics)
+
+k_n = 100
+thresh = 0.03
+
+pcd_np = np.asarray(original_pcd.points)
+
+kdtree = o3d.geometry.KDTreeFlann(original_pcd)
+k_neighbors = [kdtree.search_knn_vector_3d(pcd_np[i], k_n) for i in range(len(pcd_np))]
+
+eigenvalues = []
+for neighbors in k_neighbors:
+    neighbor_points = pcd_np[neighbors[1]]
+    cov_matrix = np.cov(neighbor_points.T)
+    eigenvalue, _ = np.linalg.eigh(cov_matrix)
+    eigenvalues.append(eigenvalue)
+
+eigenvalues = np.array(eigenvalues)  
+e1, e2, e3 = eigenvalues[:, 0], eigenvalues[:, 1], eigenvalues[:, 2]
+sum_eg = np.add(np.add(e1, e2), e3)
+sigma = np.divide(e1, sum_eg)
+
+sigma = sigma > thresh
+
+edge_points = pcd_np[sigma]
+
+edge_pcd = o3d.geometry.PointCloud()
+edge_pcd.points = o3d.utility.Vector3dVector(edge_points)
+edge_pcd.paint_uniform_color([1,0,0])
+
+print(len(edge_pcd.points))
+print(np.asarray(edge_pcd.points))
+
+aabb_edge = edge_pcd.get_axis_aligned_bounding_box()
+aabb_edge.color = (0, 0, 0)
+
+# o3d.visualization.draw_geometries([edge_pcd])
+
+4. filtering edge points
+intersection_all_edges = []
+intersection_edges = []
+r = 0.2
+
+for i in range(len(intersections)):
+    edges = []
+    x = intersections[i][0]
+    y = intersections[i][1]
+    for j in range(len(edge_points)):
+        x_cond1 = abs(edge_points[j][0] - x) <= r
+        y_cond1 = abs(edge_points[j][1] - y) <= r
+
+        if(x_cond1 and y_cond1):
+            intersection_all_edges.append(edge_points[j])
+            edges.append(edge_points[j])
+    intersection_edges.append(edges)
+
+intersection_edges_pcd = o3d.geometry.PointCloud()
+intersection_edges_pcd.points = o3d.utility.Vector3dVector(intersection_all_edges)
+intersection_edges_pcd.paint_uniform_color([0,0,1])
+
+o3d.visualization.draw_geometries([intersection_edges_pcd, edge_pcd])
